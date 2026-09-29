@@ -1,0 +1,13 @@
+{
+  "name": "gideon-ai",
+  "owner": { "name": "Gideon Duong" },
+  "description": "Claude Code plugins by Gideon Duong",
+  "plugins": [
+    {
+      "name": "jev-skill-router",
+      "source": "./plugins/jev-skill-router",
+      "description": "Suggests the right skills and subagents for each prompt using TypeSafe Jev",
+      "version": "0.2.0"
+    }
+  ]
+}
