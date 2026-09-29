@@ -3,6 +3,7 @@ import { Config } from './config.mjs';
 import { ConversationContext } from './conversation-context.mjs';
 import { DecisionLogger } from './decision-logger.mjs';
 import { JevClient } from './jev-client.mjs';
+import { PromptParts } from './prompt-parts.mjs';
 import { CapabilityRouter } from './capability-router.mjs';
 
 /**
@@ -72,14 +73,22 @@ export class HookRunner {
     if (!this.#shouldRoute(prompt)) return;
 
     const started = Date.now();
+    const preview = prompt.slice(0, HookRunner.PROMPT_PREVIEW_CHARS);
+    const parts = PromptParts.parse(prompt);
+    if (parts.hasPaste && parts.typed.length < this.config.minPromptChars) {
+      this.logger.write({ prompt: preview, ms: Date.now() - started, skipped: 'paste-only' });
+      this.#emit('');
+      return;
+    }
+
     const catalog = new CatalogScanner(input.cwd, input.transcript_path).scan();
     if (!catalog.skills.length && !catalog.agents.length && !catalog.mcp.length) return;
 
-    const preview = prompt.slice(0, HookRunner.PROMPT_PREVIEW_CHARS);
     try {
       const router = new CapabilityRouter(catalog, this.config);
       const context = ConversationContext.load(input.transcript_path, this.config.contextChars);
-      const decision = await router.route(JevClient.fromEnv(this.config), context.toState(prompt));
+      const state = context.toState(parts.typed, parts.pastedExcerpt(this.config.pastedChars));
+      const decision = await router.route(JevClient.fromEnv(this.config), state);
 
       this.logger.write({
         prompt: preview,

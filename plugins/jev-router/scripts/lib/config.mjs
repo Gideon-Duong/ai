@@ -14,6 +14,8 @@ export class Config {
     toolThreshold: 0.7,
     mcpThreshold: 0.75,
     contextChars: 1500,
+    pastedChars: 800,
+    complementThreshold: 0.5,
     planThreshold: 0.7,
     maxSkills: 3,
     maxAgents: 2,
@@ -46,6 +48,10 @@ export class Config {
     this.mcpThreshold = values.mcpThreshold;
     /** @type {number} Characters of the previous assistant reply sent as context; 0 disables it. */
     this.contextChars = values.contextChars;
+    /** @type {number} Characters of pasted content sent as reference; pasted text is never judged as the request. */
+    this.pastedChars = values.pastedChars;
+    /** @type {number} Minimum probability that a secondary suggestion is needed beyond the top one; filters overlapping picks. */
+    this.complementThreshold = values.complementThreshold;
     /** @type {number} Minimum probability that the prompt asks for work; below it nothing is suggested. */
     this.actionableThreshold = values.actionableThreshold;
     /** @type {number} Minimum probability for the "plan first" hint. */

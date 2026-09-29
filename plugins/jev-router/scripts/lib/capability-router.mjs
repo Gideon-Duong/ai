@@ -15,10 +15,12 @@ export class Suggestion {
   /**
    * @param {import('./catalog.mjs').CatalogEntry} entry The suggested entry.
    * @param {number} probability Jev's Noul probability that it applies.
+   * @param {string} [id] ID of the usage question that produced it.
    */
-  constructor(entry, probability) {
+  constructor(entry, probability, id = '') {
     this.entry = entry;
     this.probability = probability;
+    this.id = id;
   }
 
   /** @returns {string} e.g. `mattpocock-skills:tdd (0.91)`. */
@@ -182,8 +184,9 @@ export class Decision {
  *   `actionableThreshold` nothing is suggested and no second request is sent;
  * - a Noul per skill, agent, situational tool, and MCP server (several may apply at once);
  * - Nouls for multi-step planning and parallelizable work;
- * - a Choice per selected skill, "who should run it". By default this is a
- *   second, small request for the selected skills only; with
+ * - a second, small request with a Choice per selected skill, "who should
+ *   run it", and a complement Noul per secondary pick, "is it needed beyond
+ *   the top pick?", which drops overlapping suggestions; with
  *   `speculativeExecutors` it is asked for every skill in the first request
  *   (one round trip, many more tokens).
  */
@@ -246,8 +249,8 @@ export class CapabilityRouter {
     if (actionable < this.config.actionableThreshold) return Decision.skipped(actionable);
     if (!speculative) {
       const selected = this.#pick(this.skills, CapabilityRouter.#skillId, this.config.maxSkills, this.config.threshold, answers).map(s => s.entry);
-      const executorQuestions = this.#executorQuestions(selected);
-      if (Object.keys(executorQuestions).length) Object.assign(answers, await client.ask(state, executorQuestions));
+      const followUp = { ...this.#executorQuestions(selected), ...this.#complementQuestions(this.#candidates(answers)) };
+      if (Object.keys(followUp).length) Object.assign(answers, await client.ask(state, followUp));
     }
     return this.decide(answers);
   }
@@ -309,6 +312,7 @@ export class CapabilityRouter {
     const main = new Assignment(Assignment.MAIN, null);
     /** @type {Map<string, Assignment>} */
     const byExecutor = new Map([[Assignment.MAIN, main]]);
+    const anchorId = this.#candidates(answers)[0]?.id ?? '';
     const assignmentFor = name => {
       if (!byExecutor.has(name)) byExecutor.set(name, new Assignment(name, this.agents.find(a => a.name === name) ?? null));
       return byExecutor.get(name);
@@ -318,7 +322,7 @@ export class CapabilityRouter {
       assignmentFor(agent.name).agentSuggestion = new Suggestion(agent, probability);
     }
 
-    for (const suggestion of this.#pick(this.skills, CapabilityRouter.#skillId, maxSkills, threshold, answers)) {
+    for (const suggestion of this.#pick(this.skills, CapabilityRouter.#skillId, maxSkills, threshold, answers, anchorId)) {
       const skill = suggestion.entry;
       if (skill.forkAgent) {
         const forked = assignmentFor(`${skill.forkAgent}#fork`);
@@ -335,8 +339,8 @@ export class CapabilityRouter {
 
     return new Decision([...byExecutor.values()], {
       actionable: answers[CapabilityRouter.ACTIONABLE_ID]?.noul ?? 1,
-      tools: this.#pick(this.tools, CapabilityRouter.#toolId, maxTools, toolThreshold, answers),
-      mcp: this.#pick(this.mcp, CapabilityRouter.#mcpId, maxMcp, mcpThreshold, answers),
+      tools: this.#pick(this.tools, CapabilityRouter.#toolId, maxTools, toolThreshold, answers, anchorId),
+      mcp: this.#pick(this.mcp, CapabilityRouter.#mcpId, maxMcp, mcpThreshold, answers, anchorId),
       needsPlan: (answers[CapabilityRouter.PLAN_ID]?.noul ?? 0) >= planThreshold,
       parallel: (answers[CapabilityRouter.PARALLEL_ID]?.noul ?? 0) >= parallelThreshold,
     });
@@ -350,14 +354,62 @@ export class CapabilityRouter {
    * @param {number} max Cap on results.
    * @param {number} minProbability Threshold for this entry kind.
    * @param {Answers} answers
+   * @param {string} [anchorId] Top pick; other picks must pass their complement
+   *   question when it was asked.
    * @returns {Suggestion[]}
    */
-  #pick(entries, idOf, max, minProbability, answers) {
+  #pick(entries, idOf, max, minProbability, answers, anchorId = '') {
     return entries
-      .map((entry, i) => new Suggestion(entry, answers[idOf(i)]?.noul ?? 0))
+      .map((entry, i) => new Suggestion(entry, answers[idOf(i)]?.noul ?? 0, idOf(i)))
       .filter(s => s.probability >= minProbability && !this.config.exclude.includes(s.entry.name))
+      .filter(s => s.id === anchorId || this.#isComplement(s.id, answers))
       .sort((a, b) => b.probability - a.probability)
       .slice(0, max);
+  }
+
+  /**
+   * @param {string} id Usage question ID.
+   * @param {Answers} answers
+   * @returns {boolean} False only when its complement question was asked and answered no.
+   */
+  #isComplement(id, answers) {
+    const answer = answers[CapabilityRouter.#complementId(id)];
+    return answer === undefined || answer.noul >= this.config.complementThreshold;
+  }
+
+  /**
+   * Skills, tools, and MCP servers above their thresholds, most likely first.
+   * The first one is the anchor that the others are compared against.
+   * @param {Answers} answers
+   * @returns {Suggestion[]}
+   */
+  #candidates(answers) {
+    const { threshold, toolThreshold, mcpThreshold } = this.config;
+    return [
+      ...this.#pick(this.skills, CapabilityRouter.#skillId, Infinity, threshold, answers),
+      ...this.#pick(this.tools, CapabilityRouter.#toolId, Infinity, toolThreshold, answers),
+      ...this.#pick(this.mcp, CapabilityRouter.#mcpId, Infinity, mcpThreshold, answers),
+    ].sort((a, b) => b.probability - a.probability);
+  }
+
+  /**
+   * "Is this needed beyond the top pick?" for every secondary candidate, so
+   * overlapping ways to do the same thing collapse into one suggestion.
+   * @param {Suggestion[]} candidates From {@link #candidates}; the first is the anchor.
+   * @returns {Questions}
+   */
+  #complementQuestions(candidates) {
+    const [anchor, ...rest] = candidates;
+    if (!anchor) return {};
+    const describe = s => `the ${CapabilityRouter.KIND_LABEL[s.entry.kind]} "${s.entry.name}" (${s.entry.description.slice(0, 200)})`;
+    return Object.fromEntries(rest.map(s => [CapabilityRouter.#complementId(s.id), {
+      type: 'noul',
+      instructions: {
+        question: `The assistant will handle the request in \`prompt\` using ${describe(anchor)}. Does it also need ${describe(s)}?`,
+        yes: 'It serves a different part of the request that the first one does not cover.',
+        no: 'It overlaps with the first one, is an alternative way to do the same thing, or is not needed.',
+      },
+    }]));
   }
 
   /**
@@ -430,6 +482,11 @@ export class CapabilityRouter {
   /** @param {number} i @returns {string} */
   static #mcpId(i) {
     return `m${i}`;
+  }
+
+  /** @param {string} id Usage question ID. @returns {string} */
+  static #complementId(id) {
+    return `k_${id}`;
   }
 
   /** @param {number} i @returns {string} */
