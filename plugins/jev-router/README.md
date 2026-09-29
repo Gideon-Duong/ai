@@ -24,7 +24,9 @@ Requires Node 18+. No npm dependencies.
    MCP tools, and MCP servers that failed to connect. The last inventory is cached per project in
    `~/.claude/jev-router/inventory/` for the first prompt of a new session. Files on disk add
    `context: fork` (skills) and `skills:` preloads (agents); without a transcript they are used alone.
-2. **Request 1** (`POST /v1/systemone`): a Noul per skill, agent, situational built-in tool
+2. **Request 1** (`POST /v1/systemone`): a gate Noul `actionable` ("does the prompt ask for new
+   work?" — pasted logs, feedback, and acknowledgements do not); below `actionableThreshold`
+   nothing is suggested and request 2 is skipped. Plus a Noul per skill, agent, situational built-in tool
    (WebSearch, LSP, Monitor, ...), and MCP server (judged by its tool names), plus `needs_plan`
    and `parallel`. MCP servers that only expose sign-in tools are skipped.
 3. **Request 2** (only when skills were selected): a Choice per selected skill — run it in the main
@@ -53,6 +55,7 @@ Optional `~/.claude/jev-router/config.json`:
 ```json
 {
   "threshold": 0.6,
+  "actionableThreshold": 0.5,
   "planThreshold": 0.7,
   "maxSkills": 3,
   "maxAgents": 2,

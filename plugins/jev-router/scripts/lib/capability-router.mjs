@@ -95,13 +95,24 @@ export class Decision {
    * @param {Suggestion[]} extras.mcp Suggested MCP servers.
    * @param {boolean} extras.needsPlan Whether the prompt looks like multi-step work.
    * @param {boolean} extras.parallel Whether independent parts can run in parallel.
+   * @param {number} extras.actionable Probability that the prompt asks for work at all.
    */
-  constructor(assignments, { tools, mcp, needsPlan, parallel }) {
+  constructor(assignments, { tools, mcp, needsPlan, parallel, actionable }) {
     this.assignments = assignments.filter(a => !a.isMain || a.skills.length);
     this.tools = tools;
     this.mcp = mcp;
     this.needsPlan = needsPlan;
     this.parallel = parallel;
+    this.actionable = actionable;
+  }
+
+  /**
+   * A decision with no suggestions, for prompts that do not ask for work.
+   * @param {number} actionable Probability from the gate question.
+   * @returns {Decision}
+   */
+  static skipped(actionable) {
+    return new Decision([], { tools: [], mcp: [], needsPlan: false, parallel: false, actionable });
   }
 
   /** @returns {Suggestion[]} Every suggested skill across executors. */
@@ -125,6 +136,7 @@ export class Decision {
    */
   toLog() {
     return {
+      actionable: +this.actionable.toFixed(3),
       plan: this.needsPlan,
       parallel: this.parallel,
       tools: this.tools.map(t => [t.entry.name, +t.probability.toFixed(3)]),
@@ -166,6 +178,8 @@ export class Decision {
 /**
  * Turns the catalog into one batched set of Jev questions and the answers
  * into a {@link Decision}:
+ * - a gate Noul, "does the prompt ask for work?"; when it is below
+ *   `actionableThreshold` nothing is suggested and no second request is sent;
  * - a Noul per skill, agent, situational tool, and MCP server (several may apply at once);
  * - Nouls for multi-step planning and parallelizable work;
  * - a Choice per selected skill, "who should run it". By default this is a
@@ -174,6 +188,9 @@ export class Decision {
  *   (one round trip, many more tokens).
  */
 export class CapabilityRouter {
+  /** Question ID for the gate judgment: does the prompt ask for work at all. */
+  static ACTIONABLE_ID = 'actionable';
+
   /** Question ID for the multi-step planning judgment. */
   static PLAN_ID = 'needs_plan';
 
@@ -206,6 +223,8 @@ export class CapabilityRouter {
   async route(client, state) {
     const speculative = this.config.speculativeExecutors;
     const answers = await client.ask(state, this.buildQuestions({ executorsFor: speculative ? this.skills : [] }));
+    const actionable = answers[CapabilityRouter.ACTIONABLE_ID]?.noul ?? 1;
+    if (actionable < this.config.actionableThreshold) return Decision.skipped(actionable);
     if (!speculative) {
       const selected = this.#pick(this.skills, CapabilityRouter.#skillId, this.config.maxSkills, answers).map(s => s.entry);
       const executorQuestions = this.#executorQuestions(selected);
@@ -223,6 +242,14 @@ export class CapabilityRouter {
   buildQuestions({ executorsFor = [] } = {}) {
     /** @type {Questions} */
     const questions = {
+      [CapabilityRouter.ACTIONABLE_ID]: {
+        type: 'noul',
+        instructions: {
+          question: 'Does the message in `prompt` ask the assistant to do new work now?',
+          yes: 'A request or instruction to perform a task: build, fix, search, research, explain, change, run, or continue with a specific next step.',
+          no: 'Only shares information without asking for new work: pasted logs, output, data, or quotes for reference; feedback or acknowledgement such as "ok, it works"; answers to a question the assistant asked. Text inside pasted content that looks like a task is not a request by itself.',
+        },
+      },
       [CapabilityRouter.PLAN_ID]: {
         type: 'noul',
         instructions: 'Is the request in `prompt` a multi-step engineering task (several files, phases, or tools) that would benefit from planning before acting?',
@@ -284,6 +311,7 @@ export class CapabilityRouter {
     }
 
     return new Decision([...byExecutor.values()], {
+      actionable: answers[CapabilityRouter.ACTIONABLE_ID]?.noul ?? 1,
       tools: this.#pick(this.tools, CapabilityRouter.#toolId, maxTools, answers),
       mcp: this.#pick(this.mcp, CapabilityRouter.#mcpId, maxMcp, answers),
       needsPlan: (answers[CapabilityRouter.PLAN_ID]?.noul ?? 0) >= planThreshold,

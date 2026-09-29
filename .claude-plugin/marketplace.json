@@ -7,7 +7,7 @@
       "name": "jev-router",
       "source": "./plugins/jev-router",
       "description": "Suggests skills, subagents, tools, and MCP servers for each prompt using TypeSafe Jev",
-      "version": "0.3.0"
+      "version": "0.4.0"
     }
   ]
 }

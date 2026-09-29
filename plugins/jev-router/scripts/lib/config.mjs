@@ -10,6 +10,7 @@ export class Config {
   static DEFAULTS = Object.freeze({
     model: 'jev-latest',
     threshold: 0.6,
+    actionableThreshold: 0.5,
     planThreshold: 0.7,
     maxSkills: 3,
     maxAgents: 2,
@@ -36,6 +37,8 @@ export class Config {
     this.model = values.model;
     /** @type {number} Minimum Noul probability for a skill/agent to be suggested. */
     this.threshold = values.threshold;
+    /** @type {number} Minimum probability that the prompt asks for work; below it nothing is suggested. */
+    this.actionableThreshold = values.actionableThreshold;
     /** @type {number} Minimum probability for the "plan first" hint. */
     this.planThreshold = values.planThreshold;
     /** @type {number} Maximum number of skills suggested per prompt. */

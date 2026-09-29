@@ -1,5 +1,5 @@
 /**
- * @typedef {{type: 'noul', instructions: string}} NoulQuestion
+ * @typedef {{type: 'noul', instructions: string|object}} NoulQuestion
  * @typedef {{type: 'choice', instructions: string, criteria: Record<string, string|null>}} ChoiceQuestion
  * @typedef {{type: 'noul', noul: number}} NoulAnswer
  * @typedef {{type: 'choice', choice: string, probabilities: Record<string, number>, confidence: number}} ChoiceAnswer
@@ -97,9 +97,10 @@ export class MockJevClient extends JevClient {
    * @returns {number}
    */
   static #noul(id, question, words, prompt) {
+    if (id === 'actionable') return 0.9;
     if (id === 'needs_plan') return Math.min(1, words.size / 25);
     if (id === 'parallel') return /\b(and|also|plus|both)\b/i.test(prompt) ? 0.8 : 0.2;
-    const description = question.instructions.split('\n').slice(0, 2).join(' ');
+    const description = String(question.instructions).split('\n').slice(0, 2).join(' ');
     const hits = new Set(MockJevClient.#words(description).filter(w => words.has(w))).size;
     return Math.min(1, hits / 3);
   }
