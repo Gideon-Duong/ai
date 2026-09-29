@@ -1,5 +1,6 @@
 import { CatalogScanner } from './catalog.mjs';
 import { Config } from './config.mjs';
+import { ConversationContext } from './conversation-context.mjs';
 import { DecisionLogger } from './decision-logger.mjs';
 import { JevClient } from './jev-client.mjs';
 import { CapabilityRouter } from './capability-router.mjs';
@@ -77,7 +78,8 @@ export class HookRunner {
     const preview = prompt.slice(0, HookRunner.PROMPT_PREVIEW_CHARS);
     try {
       const router = new CapabilityRouter(catalog, this.config);
-      const decision = await router.route(JevClient.fromEnv(this.config), { prompt });
+      const context = ConversationContext.load(input.transcript_path, this.config.contextChars);
+      const decision = await router.route(JevClient.fromEnv(this.config), context.toState(prompt));
 
       this.logger.write({
         prompt: preview,

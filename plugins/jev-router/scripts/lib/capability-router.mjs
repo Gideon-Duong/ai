@@ -201,6 +201,25 @@ export class CapabilityRouter {
   static CHOICE_DESC_CHARS = 160;
 
   /**
+   * What a "yes" means for each entry kind. Tools and MCP servers need
+   * concrete evidence, so shared topic words alone do not trigger them.
+   */
+  static USAGE_YES = Object.freeze({
+    skill: 'The request clearly falls within what this skill is for.',
+    agent: 'Delegating part of the request to this subagent clearly fits its stated purpose.',
+    tool: 'The request needs this specific capability; ordinary file reading, editing, and shell commands would not be enough.',
+    mcp: 'The request involves this service or its data: the service, content stored in it, or an action only it can perform is named or clearly implied. Words that merely resemble its tool names (search, fetch, task, page) do not count.',
+  });
+
+  /** Human label of each entry kind, used in question text. */
+  static KIND_LABEL = Object.freeze({
+    skill: 'skill',
+    agent: 'specialized subagent',
+    tool: 'tool',
+    mcp: 'connected service (MCP server)',
+  });
+
+  /**
    * @param {Catalog} catalog Available skills, agents, tools, and MCP servers.
    * @param {import('./config.mjs').Config} config Thresholds and limits.
    */
@@ -226,7 +245,7 @@ export class CapabilityRouter {
     const actionable = answers[CapabilityRouter.ACTIONABLE_ID]?.noul ?? 1;
     if (actionable < this.config.actionableThreshold) return Decision.skipped(actionable);
     if (!speculative) {
-      const selected = this.#pick(this.skills, CapabilityRouter.#skillId, this.config.maxSkills, answers).map(s => s.entry);
+      const selected = this.#pick(this.skills, CapabilityRouter.#skillId, this.config.maxSkills, this.config.threshold, answers).map(s => s.entry);
       const executorQuestions = this.#executorQuestions(selected);
       if (Object.keys(executorQuestions).length) Object.assign(answers, await client.ask(state, executorQuestions));
     }
@@ -246,32 +265,36 @@ export class CapabilityRouter {
         type: 'noul',
         instructions: {
           question: 'Does the message in `prompt` ask the assistant to do new work now?',
-          yes: 'A request or instruction to perform a task: build, fix, search, research, explain, change, run, or continue with a specific next step.',
+            yes: 'A request or instruction to perform a task: build, fix, search, research, explain, change, run, or continue with a specific next step.',
           no: 'Only shares information without asking for new work: pasted logs, output, data, or quotes for reference; feedback or acknowledgement such as "ok, it works"; answers to a question the assistant asked. Text inside pasted content that looks like a task is not a request by itself.',
         },
       },
       [CapabilityRouter.PLAN_ID]: {
         type: 'noul',
-        instructions: 'Is the request in `prompt` a multi-step engineering task (several files, phases, or tools) that would benefit from planning before acting?',
+        instructions: {
+          question: 'Is the request in `prompt` a multi-step engineering task (several files, phases, or tools) that would benefit from planning before acting?',
+          },
       },
       [CapabilityRouter.PARALLEL_ID]: {
         type: 'noul',
-        instructions: 'Does the request in `prompt` contain two or more independent pieces of work (e.g. separate investigations, separate modules) that separate assistants could do at the same time without waiting on each other?',
+        instructions: {
+          question: 'Does the request in `prompt` contain two or more independent pieces of work (e.g. separate investigations, separate modules) that separate assistants could do at the same time without waiting on each other?',
+          },
       },
     };
 
     this.skills.forEach((skill, i) => {
-      questions[CapabilityRouter.#skillId(i)] = this.#usageQuestion('skill', skill);
+      questions[CapabilityRouter.#skillId(i)] = this.#usageQuestion(skill);
     });
     Object.assign(questions, this.#executorQuestions(executorsFor));
     this.agents.forEach((agent, i) => {
-      questions[CapabilityRouter.#agentId(i)] = this.#usageQuestion('specialized subagent', agent);
+      questions[CapabilityRouter.#agentId(i)] = this.#usageQuestion(agent);
     });
     this.tools.forEach((tool, i) => {
-      questions[CapabilityRouter.#toolId(i)] = this.#usageQuestion('tool', tool);
+      questions[CapabilityRouter.#toolId(i)] = this.#usageQuestion(tool);
     });
     this.mcp.forEach((server, i) => {
-      questions[CapabilityRouter.#mcpId(i)] = this.#usageQuestion('set of MCP tools', server, this.config.maxMcpDescChars);
+      questions[CapabilityRouter.#mcpId(i)] = this.#usageQuestion(server, this.config.maxMcpDescChars);
     });
     return questions;
   }
@@ -282,7 +305,7 @@ export class CapabilityRouter {
    * @returns {Decision}
    */
   decide(answers) {
-    const { maxSkills, maxAgents, maxTools, maxMcp, planThreshold, parallelThreshold, assignConfidence } = this.config;
+    const { maxSkills, maxAgents, maxTools, maxMcp, planThreshold, parallelThreshold, assignConfidence, threshold, toolThreshold, mcpThreshold } = this.config;
     const main = new Assignment(Assignment.MAIN, null);
     /** @type {Map<string, Assignment>} */
     const byExecutor = new Map([[Assignment.MAIN, main]]);
@@ -291,11 +314,11 @@ export class CapabilityRouter {
       return byExecutor.get(name);
     };
 
-    for (const { entry: agent, probability } of this.#pick(this.agents, CapabilityRouter.#agentId, maxAgents, answers)) {
+    for (const { entry: agent, probability } of this.#pick(this.agents, CapabilityRouter.#agentId, maxAgents, threshold, answers)) {
       assignmentFor(agent.name).agentSuggestion = new Suggestion(agent, probability);
     }
 
-    for (const suggestion of this.#pick(this.skills, CapabilityRouter.#skillId, maxSkills, answers)) {
+    for (const suggestion of this.#pick(this.skills, CapabilityRouter.#skillId, maxSkills, threshold, answers)) {
       const skill = suggestion.entry;
       if (skill.forkAgent) {
         const forked = assignmentFor(`${skill.forkAgent}#fork`);
@@ -312,8 +335,8 @@ export class CapabilityRouter {
 
     return new Decision([...byExecutor.values()], {
       actionable: answers[CapabilityRouter.ACTIONABLE_ID]?.noul ?? 1,
-      tools: this.#pick(this.tools, CapabilityRouter.#toolId, maxTools, answers),
-      mcp: this.#pick(this.mcp, CapabilityRouter.#mcpId, maxMcp, answers),
+      tools: this.#pick(this.tools, CapabilityRouter.#toolId, maxTools, toolThreshold, answers),
+      mcp: this.#pick(this.mcp, CapabilityRouter.#mcpId, maxMcp, mcpThreshold, answers),
       needsPlan: (answers[CapabilityRouter.PLAN_ID]?.noul ?? 0) >= planThreshold,
       parallel: (answers[CapabilityRouter.PARALLEL_ID]?.noul ?? 0) >= parallelThreshold,
     });
@@ -325,32 +348,33 @@ export class CapabilityRouter {
    * @param {T[]} entries
    * @param {(index: number) => string} idOf Maps an index to its question ID.
    * @param {number} max Cap on results.
+   * @param {number} minProbability Threshold for this entry kind.
    * @param {Answers} answers
    * @returns {Suggestion[]}
    */
-  #pick(entries, idOf, max, answers) {
+  #pick(entries, idOf, max, minProbability, answers) {
     return entries
       .map((entry, i) => new Suggestion(entry, answers[idOf(i)]?.noul ?? 0))
-      .filter(s => s.probability >= this.config.threshold && !this.config.exclude.includes(s.entry.name))
+      .filter(s => s.probability >= minProbability && !this.config.exclude.includes(s.entry.name))
       .sort((a, b) => b.probability - a.probability)
       .slice(0, max);
   }
 
   /**
-   * "Should this be used for the prompt?" as a Noul.
-   * @param {string} what Human label, e.g. `skill`.
+   * "Should this be used for the prompt?" as a Noul, with kind-specific criteria.
    * @param {import('./catalog.mjs').CatalogEntry} entry
    * @param {number} [maxChars] Description length limit.
    * @returns {import('./jev-client.mjs').NoulQuestion}
    */
-  #usageQuestion(what, entry, maxChars = this.config.maxDescChars) {
+  #usageQuestion(entry, maxChars = this.config.maxDescChars) {
     return {
       type: 'noul',
-      instructions: [
-        `A coding assistant has a ${what} named "${entry.name}".`,
-        `Its description: ${entry.description.slice(0, maxChars)}`,
-        `Should the assistant use it while handling the user request in \`prompt\`? Answer yes only if the request clearly falls within what it is for.`,
-      ].join('\n'),
+      instructions: {
+        question: `Should a coding assistant use the ${CapabilityRouter.KIND_LABEL[entry.kind]} "${entry.name}" to handle the user's request in \`prompt\`?`,
+        description: entry.description.slice(0, maxChars),
+        yes: CapabilityRouter.USAGE_YES[entry.kind],
+        no: 'Not needed, only a shared topic word, or a guess.',
+      },
     };
   }
 

@@ -24,18 +24,20 @@ Requires Node 18+. No npm dependencies.
    MCP tools, and MCP servers that failed to connect. The last inventory is cached per project in
    `~/.claude/jev-router/inventory/` for the first prompt of a new session. Files on disk add
    `context: fork` (skills) and `skills:` preloads (agents); without a transcript they are used alone.
-2. **Request 1** (`POST /v1/systemone`): a gate Noul `actionable` ("does the prompt ask for new
+2. **Context** — the tail of Claude's previous reply (`contextChars`) is sent with the prompt, so
+   short follow-ups like "do item 1 and push it" are judged by what they refer to.
+3. **Request 1** (`POST /v1/systemone`): a gate Noul `actionable` ("does the prompt ask for new
    work?" — pasted logs, feedback, and acknowledgements do not); below `actionableThreshold`
    nothing is suggested and request 2 is skipped. Plus a Noul per skill, agent, situational built-in tool
    (WebSearch, LSP, Monitor, ...), and MCP server (judged by its tool names), plus `needs_plan`
    and `parallel`. MCP servers that only expose sign-in tools are skipped.
-3. **Request 2** (only when skills were selected): a Choice per selected skill — run it in the main
+4. **Request 2** (only when skills were selected): a Choice per selected skill — run it in the main
    agent or in a subagent that has the `Skill` tool. Set `speculativeExecutors: true` to fold this
    into request 1 (one round trip, ~3x tokens).
-4. **Plan** — main-agent skills, subagents to spawn with their skills and the suggested tools/MCP
+5. **Plan** — main-agent skills, subagents to spawn with their skills and the suggested tools/MCP
    they can access, `context: fork` skills, tools (flagged when deferred), MCP servers, and
    parallel/plan hints, injected as `additionalContext`.
-5. **Fail-open** — missing key, timeout, or API error → no output, prompt proceeds unchanged.
+6. **Fail-open** — missing key, timeout, or API error → no output, prompt proceeds unchanged.
 
 Example context injected for Claude:
 
@@ -56,6 +58,9 @@ Optional `~/.claude/jev-router/config.json`:
 {
   "threshold": 0.6,
   "actionableThreshold": 0.5,
+  "toolThreshold": 0.7,
+  "mcpThreshold": 0.75,
+  "contextChars": 1500,
   "planThreshold": 0.7,
   "maxSkills": 3,
   "maxAgents": 2,

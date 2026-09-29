@@ -100,7 +100,8 @@ export class MockJevClient extends JevClient {
     if (id === 'actionable') return 0.9;
     if (id === 'needs_plan') return Math.min(1, words.size / 25);
     if (id === 'parallel') return /\b(and|also|plus|both)\b/i.test(prompt) ? 0.8 : 0.2;
-    const description = String(question.instructions).split('\n').slice(0, 2).join(' ');
+    const ins = question.instructions;
+    const description = typeof ins === 'string' ? ins.split('\n').slice(0, 2).join(' ') : `${ins.question} ${ins.description ?? ''}`;
     const hits = new Set(MockJevClient.#words(description).filter(w => words.has(w))).size;
     return Math.min(1, hits / 3);
   }

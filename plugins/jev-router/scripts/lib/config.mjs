@@ -11,6 +11,9 @@ export class Config {
     model: 'jev-latest',
     threshold: 0.6,
     actionableThreshold: 0.5,
+    toolThreshold: 0.7,
+    mcpThreshold: 0.75,
+    contextChars: 1500,
     planThreshold: 0.7,
     maxSkills: 3,
     maxAgents: 2,
@@ -35,8 +38,14 @@ export class Config {
 
     /** @type {string} Jev model alias or versioned ID. */
     this.model = values.model;
-    /** @type {number} Minimum Noul probability for a skill/agent to be suggested. */
+    /** @type {number} Minimum Noul probability for a skill or subagent to be suggested. */
     this.threshold = values.threshold;
+    /** @type {number} Minimum probability for a built-in tool to be suggested. */
+    this.toolThreshold = values.toolThreshold;
+    /** @type {number} Minimum probability for an MCP server to be suggested. */
+    this.mcpThreshold = values.mcpThreshold;
+    /** @type {number} Characters of the previous assistant reply sent as context; 0 disables it. */
+    this.contextChars = values.contextChars;
     /** @type {number} Minimum probability that the prompt asks for work; below it nothing is suggested. */
     this.actionableThreshold = values.actionableThreshold;
     /** @type {number} Minimum probability for the "plan first" hint. */
