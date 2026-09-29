@@ -1,6 +1,6 @@
 {
-  "name": "jev-skill-router",
-  "version": "0.2.0",
+  "name": "jev-router",
+  "version": "0.3.0",
   "description": "UserPromptSubmit hook that asks TypeSafe Jev which skills, subagents, tools, and MCP servers fit each prompt and injects an execution plan as context",
   "author": { "name": "Gideon Duong" },
   "userConfig": {

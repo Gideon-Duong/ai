@@ -4,10 +4,10 @@
   "description": "Claude Code plugins by Gideon Duong",
   "plugins": [
     {
-      "name": "jev-skill-router",
-      "source": "./plugins/jev-skill-router",
-      "description": "Suggests the right skills and subagents for each prompt using TypeSafe Jev",
-      "version": "0.2.0"
+      "name": "jev-router",
+      "source": "./plugins/jev-router",
+      "description": "Suggests skills, subagents, tools, and MCP servers for each prompt using TypeSafe Jev",
+      "version": "0.3.0"
     }
   ]
 }

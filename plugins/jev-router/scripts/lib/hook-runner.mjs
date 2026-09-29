@@ -2,7 +2,7 @@ import { CatalogScanner } from './catalog.mjs';
 import { Config } from './config.mjs';
 import { DecisionLogger } from './decision-logger.mjs';
 import { JevClient } from './jev-client.mjs';
-import { SkillRouter } from './skill-router.mjs';
+import { CapabilityRouter } from './capability-router.mjs';
 
 /**
  * @typedef {object} HookInput
@@ -76,7 +76,7 @@ export class HookRunner {
 
     const preview = prompt.slice(0, HookRunner.PROMPT_PREVIEW_CHARS);
     try {
-      const router = new SkillRouter(catalog, this.config);
+      const router = new CapabilityRouter(catalog, this.config);
       const decision = await router.route(JevClient.fromEnv(this.config), { prompt });
 
       this.logger.write({

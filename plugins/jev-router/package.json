@@ -1,0 +1,1 @@
+{ "name": "jev-router", "private": true, "type": "module", "engines": { "node": ">=18" } }

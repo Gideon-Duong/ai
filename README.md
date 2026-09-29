@@ -4,7 +4,7 @@ Claude Code plugin marketplace.
 
 | Plugin | Description |
 |---|---|
-| [jev-skill-router](plugins/jev-skill-router) | Suggests the right skills and subagents for each prompt using TypeSafe Jev |
+| [jev-router](plugins/jev-router) | Suggests skills, subagents, tools, and MCP servers for each prompt using TypeSafe Jev |
 
 ```
 /plugin marketplace add Gideon-Duong/ai

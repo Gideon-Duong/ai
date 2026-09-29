@@ -165,7 +165,7 @@ const BUILT_IN_AGENTS = Object.freeze([
  */
 export class CatalogScanner {
   /** This plugin's own name, excluded from its own catalog. */
-  static SELF = 'jev-skill-router';
+  static SELF = 'jev-router';
 
   /**
    * @param {string} [cwd] Project directory of the session, used for project

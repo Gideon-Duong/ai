@@ -1,4 +1,4 @@
-# jev-skill-router
+# jev-router
 
 Claude Code plugin. On every prompt, a `UserPromptSubmit` hook asks [TypeSafe Jev](https://docs.typesafe.ai)
 which of your installed skills and subagents fit the request, and injects the matches as context.
@@ -8,11 +8,11 @@ Several skills can match at once (one Noul per skill), plus a "plan first" hint 
 
 ```
 /plugin marketplace add Gideon-Duong/ai
-/plugin install jev-skill-router@gideon-ai
+/plugin install jev-router@gideon-ai
 ```
 
 When the plugin is enabled, Claude Code prompts for your **TypeSafe API key** (masked, stored in the
-OS secure credential store, not `settings.json`). Change it later via `/plugin` → jev-skill-router →
+OS secure credential store, not `settings.json`). Change it later via `/plugin` → jev-router →
 configure. For local runs outside Claude Code, `TYPESAFE_API_KEY` is used as a fallback.
 
 Requires Node 18+. No npm dependencies.
@@ -38,7 +38,7 @@ Requires Node 18+. No npm dependencies.
 Example context injected for Claude:
 
 ```
-[jev-skill-router] Suggested execution plan (verify fit before using):
+[jev-router] Suggested execution plan (verify fit before using):
 - Main agent → use skills: mattpocock-skills:diagnosing-bugs (0.92)
 - Spawn subagent general-purpose → invoke skills: wigolo-research (0.85); it can use: WebSearch, claude_ai_Notion
 - Tools: WebSearch (0.70) [deferred: load with ToolSearch]
@@ -72,8 +72,8 @@ Decisions are logged to `~/.claude/jev-router/log.jsonl` (prompt preview, latenc
 ## Test locally
 
 ```
-node plugins/jev-skill-router/scripts/route.mjs --test "diagnose this failing test"
+node plugins/jev-router/scripts/route.mjs --test "diagnose this failing test"
 JEV_ROUTER_TRANSCRIPT=~/.claude/projects/<project>/<session>.jsonl node ... --test "..."   # use a real session inventory
-JEV_ROUTER_MOCK=1 node plugins/jev-skill-router/scripts/route.mjs --test "..."   # offline, keyword mock
-claude --plugin-dir ./plugins/jev-skill-router
+JEV_ROUTER_MOCK=1 node plugins/jev-router/scripts/route.mjs --test "..."   # offline, keyword mock
+claude --plugin-dir ./plugins/jev-router
 ```

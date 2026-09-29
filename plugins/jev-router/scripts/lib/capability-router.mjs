@@ -144,7 +144,7 @@ export class Decision {
    */
   toContext() {
     if (this.isEmpty) return '';
-    const lines = ['[jev-skill-router] Suggested execution plan (verify fit before using):'];
+    const lines = ['[jev-router] Suggested execution plan (verify fit before using):'];
     const access = [...this.tools, ...this.mcp];
     lines.push(...this.assignments.map(a => a.toLine(access)));
     if (this.tools.length) {
@@ -173,7 +173,7 @@ export class Decision {
  *   `speculativeExecutors` it is asked for every skill in the first request
  *   (one round trip, many more tokens).
  */
-export class SkillRouter {
+export class CapabilityRouter {
   /** Question ID for the multi-step planning judgment. */
   static PLAN_ID = 'needs_plan';
 
@@ -207,7 +207,7 @@ export class SkillRouter {
     const speculative = this.config.speculativeExecutors;
     const answers = await client.ask(state, this.buildQuestions({ executorsFor: speculative ? this.skills : [] }));
     if (!speculative) {
-      const selected = this.#pick(this.skills, SkillRouter.#skillId, this.config.maxSkills, answers).map(s => s.entry);
+      const selected = this.#pick(this.skills, CapabilityRouter.#skillId, this.config.maxSkills, answers).map(s => s.entry);
       const executorQuestions = this.#executorQuestions(selected);
       if (Object.keys(executorQuestions).length) Object.assign(answers, await client.ask(state, executorQuestions));
     }
@@ -223,28 +223,28 @@ export class SkillRouter {
   buildQuestions({ executorsFor = [] } = {}) {
     /** @type {Questions} */
     const questions = {
-      [SkillRouter.PLAN_ID]: {
+      [CapabilityRouter.PLAN_ID]: {
         type: 'noul',
         instructions: 'Is the request in `prompt` a multi-step engineering task (several files, phases, or tools) that would benefit from planning before acting?',
       },
-      [SkillRouter.PARALLEL_ID]: {
+      [CapabilityRouter.PARALLEL_ID]: {
         type: 'noul',
         instructions: 'Does the request in `prompt` contain two or more independent pieces of work (e.g. separate investigations, separate modules) that separate assistants could do at the same time without waiting on each other?',
       },
     };
 
     this.skills.forEach((skill, i) => {
-      questions[SkillRouter.#skillId(i)] = this.#usageQuestion('skill', skill);
+      questions[CapabilityRouter.#skillId(i)] = this.#usageQuestion('skill', skill);
     });
     Object.assign(questions, this.#executorQuestions(executorsFor));
     this.agents.forEach((agent, i) => {
-      questions[SkillRouter.#agentId(i)] = this.#usageQuestion('specialized subagent', agent);
+      questions[CapabilityRouter.#agentId(i)] = this.#usageQuestion('specialized subagent', agent);
     });
     this.tools.forEach((tool, i) => {
-      questions[SkillRouter.#toolId(i)] = this.#usageQuestion('tool', tool);
+      questions[CapabilityRouter.#toolId(i)] = this.#usageQuestion('tool', tool);
     });
     this.mcp.forEach((server, i) => {
-      questions[SkillRouter.#mcpId(i)] = this.#usageQuestion('set of MCP tools', server, this.config.maxMcpDescChars);
+      questions[CapabilityRouter.#mcpId(i)] = this.#usageQuestion('set of MCP tools', server, this.config.maxMcpDescChars);
     });
     return questions;
   }
@@ -264,11 +264,11 @@ export class SkillRouter {
       return byExecutor.get(name);
     };
 
-    for (const { entry: agent, probability } of this.#pick(this.agents, SkillRouter.#agentId, maxAgents, answers)) {
+    for (const { entry: agent, probability } of this.#pick(this.agents, CapabilityRouter.#agentId, maxAgents, answers)) {
       assignmentFor(agent.name).agentSuggestion = new Suggestion(agent, probability);
     }
 
-    for (const suggestion of this.#pick(this.skills, SkillRouter.#skillId, maxSkills, answers)) {
+    for (const suggestion of this.#pick(this.skills, CapabilityRouter.#skillId, maxSkills, answers)) {
       const skill = suggestion.entry;
       if (skill.forkAgent) {
         const forked = assignmentFor(`${skill.forkAgent}#fork`);
@@ -277,17 +277,17 @@ export class SkillRouter {
         forked.skills.push(suggestion);
         continue;
       }
-      const choice = answers[SkillRouter.#executorId(this.skills.indexOf(skill))];
+      const choice = answers[CapabilityRouter.#executorId(this.skills.indexOf(skill))];
       const confident = choice?.choice && choice.choice !== Assignment.MAIN && (choice.confidence ?? 0) >= assignConfidence;
       const target = confident ? assignmentFor(choice.choice) : main;
       if (!target.agent?.skills.includes(skill.name)) target.skills.push(suggestion);
     }
 
     return new Decision([...byExecutor.values()], {
-      tools: this.#pick(this.tools, SkillRouter.#toolId, maxTools, answers),
-      mcp: this.#pick(this.mcp, SkillRouter.#mcpId, maxMcp, answers),
-      needsPlan: (answers[SkillRouter.PLAN_ID]?.noul ?? 0) >= planThreshold,
-      parallel: (answers[SkillRouter.PARALLEL_ID]?.noul ?? 0) >= parallelThreshold,
+      tools: this.#pick(this.tools, CapabilityRouter.#toolId, maxTools, answers),
+      mcp: this.#pick(this.mcp, CapabilityRouter.#mcpId, maxMcp, answers),
+      needsPlan: (answers[CapabilityRouter.PLAN_ID]?.noul ?? 0) >= planThreshold,
+      parallel: (answers[CapabilityRouter.PARALLEL_ID]?.noul ?? 0) >= parallelThreshold,
     });
   }
 
@@ -335,7 +335,7 @@ export class SkillRouter {
     if (!this.executors.length) return {};
     return Object.fromEntries(skills
       .filter(skill => !skill.forkAgent)
-      .map(skill => [SkillRouter.#executorId(this.skills.indexOf(skill)), this.#executorQuestion(skill)]));
+      .map(skill => [CapabilityRouter.#executorId(this.skills.indexOf(skill)), this.#executorQuestion(skill)]));
   }
 
   /**
@@ -349,7 +349,7 @@ export class SkillRouter {
     const criteria = {
       [Assignment.MAIN]: 'The main assistant runs the skill itself, in the ongoing conversation. Best when the work is small, interactive, or needs the conversation so far.',
     };
-    for (const agent of this.executors) criteria[agent.name] = agent.description.slice(0, SkillRouter.CHOICE_DESC_CHARS);
+    for (const agent of this.executors) criteria[agent.name] = agent.description.slice(0, CapabilityRouter.CHOICE_DESC_CHARS);
     return {
       type: 'choice',
       instructions: [
